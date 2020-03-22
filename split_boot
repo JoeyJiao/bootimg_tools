@@ -8,7 +8,7 @@
 #					
 #   Description   : Split appart an Android boot image created 
 #                   with mkbootimg. The format can be found in
-#                   android-src/system/core/mkbootimg/bootimg.h
+#                   android-src/system/tools/mkbootimg/include/bootimg/bootimg.h
 #
 #                   Thanks to alansj on xda-developers.com for 
 #                   identifying the format in bootimg.h and 
@@ -52,6 +52,7 @@ use constant BOOT_MAGIC => 'ANDROID!';
 use constant BOOT_MAGIC_SIZE => 8;
 use constant BOOT_NAME_SIZE => 16;
 use constant BOOT_ARGS_SIZE => 512;
+use constant BOOT_EXTRA_ARGS_SIZE => 1024;
 
 # Unsigned integers are 4 bytes
 use constant UNSIGNED_SIZE => 4;
@@ -61,6 +62,9 @@ my $PAGE_SIZE = undef;
 my $KERNEL_SIZE = undef;
 my $RAMDISK_SIZE = undef;
 my $SECOND_SIZE = undef;
+my $TAGS_ADDR = undef;
+my $RECOVERY_DTBO_ADDR = undef;
+my $DTB_SIZE = undef;
 
 ######################################################################
 ## Main Code
@@ -68,7 +72,7 @@ my $SECOND_SIZE = undef;
 &parse_cmdline();
 &parse_header($IMAGE_FN);
 
-=format (from bootimg.h)
+=format (from bootimg.h v1)
 ** +-----------------+
 ** | boot header     | 1 page
 ** +-----------------+
@@ -184,8 +188,13 @@ sub parse_header {
     read(INF, $buf, UNSIGNED_SIZE);
     my ($p_size) = unpack("V", $buf);
 
-    # Ignore unused
-    read(INF, $buf, UNSIGNED_SIZE * 2);
+    # header version
+    read(INF, $buf, UNSIGNED_SIZE);
+    my ($header_version) = unpack("V", $buf);
+
+    # os_version
+    read(INF, $buf, UNSIGNED_SIZE);
+    my ($os_version) = unpack("V", $buf);
 
     # Read the name (board name)
     read(INF, $buf, BOOT_NAME_SIZE);
@@ -198,6 +207,23 @@ sub parse_header {
     # Ignore the id
     read(INF, $buf, UNSIGNED_SIZE * 8);
 
+    # extra cmdline
+    read(INF, $buf, BOOT_EXTRA_ARGS_SIZE);
+
+    # version 1
+    read(INF, $buf, UNSIGNED_SIZE);
+    my ($recovery_dtbo_size) = unpack("V", $buf);
+    read(INF, $buf, UNSIGNED_SIZE*2);
+    my ($recovery_dtbo_offset) = unpack("VV", $buf);
+    read(INF, $buf, UNSIGNED_SIZE);
+    my ($header_size) = unpack("V", $buf);
+
+    # version 2
+    read(INF, $buf, UNSIGNED_SIZE);
+    my ($dtb_size) = unpack("V", $buf);
+    read(INF, $buf, UNSIGNED_SIZE*2);
+    my ($dtb_addr) = unpack("VV", $buf);
+
     # Close the file
     close INF;
 
@@ -209,6 +235,11 @@ sub parse_header {
     printf "Board name: $name\n";
     printf "Command line: \'$cmdline\'\n";
     printf "Base address: (0x%08x)\n", $tags_addr - 0x00000100;
+    printf "Header version: %d\n", $header_version;
+    printf "Tags addr: %d (0x%08x)\n", $tags_addr, $tags_addr;
+    printf "Recovery dtbo size: %d (0x%08x)\n", $recovery_dtbo_size, $recovery_dtbo_size;
+    printf "Header size: %d (0x%08x)\n", $header_size, $header_size;
+    printf "Dtb size: %d (0x%08x)\n", $dtb_size, $dtb_size;
 	print "\n";
 
     # Save the values
